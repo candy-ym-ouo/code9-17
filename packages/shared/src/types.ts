@@ -62,6 +62,69 @@ export interface ReproWindowDto {
   computedAt: string | null;
 }
 
+// ------------------------------------------------------------ 光线预演台
+// 预演 = 只读试算：改动太阳事件 / 云量 / 能见度 / 机位朝向后即时重判，
+// 不落库、不改写窗口、不影响分享与提醒；结论携带完整溯源信息。
+
+/** 假设天气：把"实际云量/能见度"替换为假设值（仅内存演算，绝不写入缓存） */
+export interface RehearsalWeatherOverride {
+  cloudCoverPct?: number;
+  visibilityKm?: number;
+}
+
+export interface RehearsalRequest {
+  /** 条件覆盖（在已保存条件上合并）；缺省字段沿用已保存值 */
+  timing?: Partial<TimingDto>;
+  /** 机位朝向覆盖（度）；缺省用机位原值 */
+  cameraBearing?: number;
+  /** 光位角（相对机位朝向，度）；与机位朝向一起推出期望太阳方位角 */
+  lightBearingDeg?: number | null;
+  /** 假设实际天气（预演"如果那天云量是 X"） */
+  weatherOverride?: RehearsalWeatherOverride | null;
+  days?: number;
+}
+
+export interface RehearsalDayDto {
+  date: string;
+  startAt: string;
+  endAt: string;
+  anchorAt: string;
+  sunElevation: number | null;
+  sunAzimuth: number | null;
+  verdict: WindowVerdict;
+  reasons: WindowReasonDto[];
+  episode: Record<string, unknown> | null;
+  weatherDegraded: boolean;
+}
+
+/** 溯源信息：结论由哪些输入推出。inputHash 相同 ⇒ 输入相同 ⇒ 结论可复算 */
+export interface RehearsalProvenance {
+  inspirationId: string;
+  spotId: string;
+  tz: string;
+  /** 合并后的完整生效条件 */
+  effectiveTiming: TimingDto;
+  cameraBearing: number;
+  lightBearingDeg: number | null;
+  /** 由机位朝向 + 光位角推出的期望太阳方位角（无约束时为 null） */
+  derivedAzimuth: number | null;
+  weather: {
+    provider: string;
+    degraded: boolean;
+    override: RehearsalWeatherOverride | null;
+  };
+  /** 输入指纹（sha256 截断）：覆盖条件 + 机位朝向 + 假设天气 + 逐日天气剧集 */
+  inputHash: string;
+  computedAt: string;
+  /** 恒为 false：预演绝不落库 */
+  persisted: false;
+}
+
+export interface RehearsalResponse {
+  days: RehearsalDayDto[];
+  provenance: RehearsalProvenance;
+}
+
 export interface TagDto {
   id: string;
   domain: TagDomain;

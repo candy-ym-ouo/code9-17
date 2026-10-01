@@ -43,8 +43,8 @@ npm start          # 后端 3000 端口同时托管前端，SPA fallback 已配�
 ## 验证（这三条命令就是"真的能跑"的证明）
 
 ```bash
-npm test                        # 76 个自动化测试：天文 / 几何 / geohash / 窗口判定 / API 闭环
-npm run smoke                   # 69 项真实 HTTP 断言（需先启动服务端）
+npm test                        # 90 个自动化测试：天文 / 几何 / geohash / 窗口判定 / 预演台 / API 闭环
+npm run smoke                   # 68 项真实 HTTP 断言（需先启动服务端）
 npm run test:e2e                # 2 个真实浏览器闭环用例（需先 npm run build && npm start）
 ```
 
@@ -74,6 +74,7 @@ npx playwright install chromium
 | **判定必须给理由** | 每条窗口都输出"云量 62%（目标 20%–50%）"这样的实际值 vs 目标值，可人工复算。 |
 | **硬性项 vs 软性项** | 降水概率超限 = 不可拍（bad）；云量偏差 = 勉强（marginal）。不会因为一点云就把机会判死。 |
 | **回填反哺判断** | 连续 3 次同因（天气不符/时间差了）未命中 → 系统自动收紧方位角容差或云量区间，并留下**可撤销**的校准记录。 |
+| **光线预演台只读试算** | 改太阳事件 / 云量 / 能见度 / 机位朝向 → 400ms 防抖即时重判未来 7 天。每条结论带**输入指纹**（相同输入必得相同结论，可复算核对）；纯内存演算——不落库、不改写窗口、不动天气缓存与分享快照，响应 `no-store` 且不含任何坐标。 |
 | **地点模糊化不是"打个码"** | 用 geohash 网格中心做稳定输出（不是随机抖动——随机值可被多次请求平均反推）；`exact`/`g100` 在服务端被**强制降级**为 500m，不靠前端隐藏。 |
 | **画册有缺口清单** | 画册不是文件夹：定主题 → 系统算出"还差什么" → 每条缺口给一键动作 → 必需缺口不闭合则**发布被拒（409）**。 |
 
@@ -90,6 +91,7 @@ origin/
 │   └── src/
 │       ├── services/         # 全部闭环逻辑集中在这里
 │       │   ├── windowEngine.ts   # 窗口计算与判定理由
+│       │   ├── rehearsal.ts      # 光线预演台（只读试算 + 溯源指纹，绝不落库）
 │       │   ├── weather.ts        # Open-Meteo 取数 + 缓存 + 降级 + 气候基线
 │       │   ├── fuzzing.ts        # 地点模糊化（geohash 网格中心）
 │       │   ├── calibration.ts    # 回填校准与收窄
@@ -99,7 +101,7 @@ origin/
 │       └── routes/           # 8 个路由模块，约 70 个端点
 └── apps/web/                 # React 18 + Vite + TypeScript + Ant Design
     ├── src/components/       # TagPicker / AnnotationEditor(Canvas 标注) / TimingEditor /
-    │                         # WindowList / MapCanvas(自绘可换瓦片源) / ResultForm
+    │                         # RehearsalConsole(光线预演台) / WindowList / MapCanvas(自绘可换瓦片源) / ResultForm
     └── src/routes/           # 今日 / 收件箱 / 灵感卡 / 检索 / 计划 / 画册 / 地点 / 设置 / 分享页
 ```
 

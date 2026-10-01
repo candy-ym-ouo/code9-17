@@ -6,11 +6,13 @@ import {
   distanceKm,
   formatLocal,
   localDateKey,
+  rehearsalRequestSchema,
   resolveAnchor,
   sunEvents,
   theoreticalOkForDay,
   theoreticalDaysInYear,
   timingSchema,
+  type RehearsalRequest,
   type TimingDto,
 } from '@flil/shared';
 import { getDb, newId, nowIso, toJson } from '../db.js';
@@ -27,6 +29,7 @@ import {
   timingRowToDto,
   windowSummary,
 } from '../services/windowEngine.js';
+import { runRehearsal } from '../services/rehearsal.js';
 import { climateAt, climateStats, getForecast } from '../services/weather.js';
 import { toInspirationDto } from '../services/serialization.js';
 
@@ -160,10 +163,26 @@ async function satisfactionRate(
   return { total: results.length, satisfied, ratio: Number(ratio.toFixed(3)), advice };
 }
 
-timingRouter.get(
-  '/inspirations/:id/windows',
+/**
+ * 光线预演台：改动太阳事件 / 云量 / 能见度 / 机位朝向后即时重判。
+ * 只读试算 —— 不落库、不改写窗口、不发事件、不动分享快照与天气缓存；
+ * 响应不缓存（no-store），且不含任何坐标（精确或模糊）。
+ */
+timingRouter.post(
+  '/inspirations/:id/rehearsal',
   ah(async (req, res) => {
     const ctx = ctxOf(req);
+    const row = requireInspiration(req.params.id, ctx.libraryId);
+    const input = rehearsalRequestSchema.parse(req.body ?? {}) as RehearsalRequest;
+    res.setHeader('Cache-Control', 'no-store');
+    const result = await runRehearsal(row, input);
+    ok(res, result);
+  }),
+);
+
+timingRouter.get(
+  '/inspirations/:id/windows',
+  ah(async (req, res) => {    const ctx = ctxOf(req);
     const row = requireInspiration(req.params.id, ctx.libraryId);
     const days = Math.min(16, Math.max(1, Number(req.query.days ?? 7)));
     if (String(req.query.refresh ?? 'false') === 'true') {

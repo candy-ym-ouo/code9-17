@@ -44,6 +44,24 @@ export const timingSchema = z.object({
   notes: z.string().max(2000).nullable().default(null),
 });
 
+/**
+ * 光线预演台请求：全部字段可选——只带上"要改的那一项"即可即时重判。
+ * 服务端在已保存条件上合并，纯内存演算，不落库。
+ */
+export const rehearsalRequestSchema = z.object({
+  timing: timingSchema.partial().optional(),
+  cameraBearing: z.number().min(0).max(360).optional(),
+  lightBearingDeg: z.number().min(-360).max(360).nullable().optional(),
+  weatherOverride: z
+    .object({
+      cloudCoverPct: z.number().min(0).max(100).optional(),
+      visibilityKm: z.number().min(0).max(100).optional(),
+    })
+    .nullable()
+    .optional(),
+  days: z.number().int().min(1).max(16).default(7),
+});
+
 export const createInspirationSchema = z.object({
   title: z.string().min(1).max(200),
   note: z.string().max(5000).nullable().optional(),

@@ -37,6 +37,7 @@ import { useSession } from '../stores/session.js';
 import { AssetStrip } from '../components/AssetStrip.js';
 import { AnnotationEditor, type DraftAnnotation } from '../components/AnnotationEditor.js';
 import { TimingEditor } from '../components/TimingEditor.js';
+import { RehearsalConsole } from '../components/RehearsalConsole.js';
 import { WindowList } from '../components/WindowList.js';
 import { TagPicker } from '../components/TagPicker.js';
 
@@ -58,6 +59,7 @@ export default function InspirationDetail() {
   const [draftAnnotations, setDraftAnnotations] = useState<DraftAnnotation[]>([]);
   const [calibration, setCalibration] = useState<Record<string, unknown>[]>([]);
   const [editTiming, setEditTiming] = useState(false);
+  const [rehearsalOpen, setRehearsalOpen] = useState(false);
 
   const item = detail.data?.item;
 
@@ -247,9 +249,21 @@ export default function InspirationDetail() {
                 )}
               </Descriptions.Item>
             </Descriptions>
-            <Button size="small" onClick={() => setEditTiming((v) => !v)}>
-              {editTiming ? '收起条件编辑' : '编辑拍摄条件'}
-            </Button>
+            <Space>
+              <Button size="small" onClick={() => setEditTiming((v) => !v)}>
+                {editTiming ? '收起条件编辑' : '编辑拍摄条件'}
+              </Button>
+              <Button
+                size="small"
+                type={rehearsalOpen ? 'primary' : 'default'}
+                ghost={!rehearsalOpen}
+                disabled={!item.timing || !item.spot}
+                title={!item.timing || !item.spot ? '先保存拍摄条件并绑定机位' : '改动条件即时试算，不落库'}
+                onClick={() => setRehearsalOpen((v) => !v)}
+              >
+                {rehearsalOpen ? '收起预演台' : '光线预演台'}
+              </Button>
+            </Space>
           </Col>
         </Row>
       </Card>
@@ -281,6 +295,24 @@ export default function InspirationDetail() {
               void detail.refetch();
               void windows.refetch();
             }}
+          />
+        </Card>
+      ) : null}
+
+      {rehearsalOpen && item.timing && item.spot ? (
+        <Card
+          title="光线预演台（只读试算：不落库、不影响窗口与分享）"
+          extra={
+            <Typography.Text type="secondary" style={{ fontSize: 12 }}>
+              改动即重判 · 结论带指纹可复算
+            </Typography.Text>
+          }
+        >
+          <RehearsalConsole
+            inspirationId={item.id}
+            baseTiming={item.timing as TimingDto}
+            cameraBearing={item.spot.cameraBearing}
+            tz={tz}
           />
         </Card>
       ) : null}

@@ -4,6 +4,8 @@ import type {
   AlbumGapDto,
   InspirationDto,
   PlanDto,
+  RehearsalRequest,
+  RehearsalResponse,
   ReminderDto,
   ReproWindowDto,
   SearchResult,
@@ -162,6 +164,14 @@ export function usePreviewTiming() {
         notes: string[];
         satisfiability: { total: number; satisfied: number; ratio: number; advice: string | null };
       }>(`/inspirations/${id}/timing/preview`, timing),
+  });
+}
+
+/** 光线预演台：只读试算，不落库；每次调用都带完整输入，响应含溯源指纹 */
+export function useRehearsal() {
+  return useMutation({
+    mutationFn: ({ id, ...body }: { id: string } & RehearsalRequest) =>
+      post<RehearsalResponse>(`/inspirations/${id}/rehearsal`, body),
   });
 }
 

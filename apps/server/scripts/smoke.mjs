@@ -170,6 +170,72 @@ async function main() {
   const anchorReason = (firstWithReasons?.reasons ?? []).find((r) => r.code === 'ANCHOR_RESOLVED');
   check('理由里包含锚点解析结果（可复算）', Boolean(anchorReason?.text), anchorReason?.text);
 
+  // 7b. 光线预演台：四旋钮即时重判 + 溯源 + 不泄露
+  const basePreviewTiming = {
+    timeAnchor: 'sunset_minus',
+    anchorOffsetMin: 40,
+    elevationRange: [-4, 10],
+    azimuthRange: [250, 280],
+    azimuthTolerance: 15,
+    windowToleranceMin: 12,
+    weatherProfile: { cloudCoverPct: { min: 20, max: 60 }, visibilityKmMin: 8, precipProbPctMax: 20 },
+    seasonWindow: null,
+    notes: null,
+  };
+  const lp1 = await req('POST', `/inspirations/${cardId}/light-preview`, {
+    timing: basePreviewTiming,
+    days: 7,
+    override: {
+      timeAnchor: 'sunset_minus',
+      anchorOffsetMin: 40,
+      cloudCoverPct: { min: 20, max: 60 },
+      visibilityKmMin: 8,
+      cameraBearing: 265,
+      lightBearingHint: null,
+    },
+  });
+  check('预演返回 7 天逐日判定', lp1.status === 200 && (lp1.json?.days ?? []).length === 7, JSON.stringify(lp1.json));
+  check('预演回显输入快照可溯源', lp1.json?.input?.weatherProfile?.visibilityKmMin === 8);
+  check('预演声明未落库', lp1.json?.persisted === false);
+  check('预演天气来源不含坐标', !('lat' in (lp1.json?.forecast ?? {})) && !('lng' in (lp1.json?.forecast ?? {})));
+  check('预演响应不含精确坐标', !JSON.stringify(lp1.json ?? {}).includes('31.2471'));
+
+  // 改太阳事件 / 云量 / 能见度 / 机位朝向 → 第二次即时重判
+  const lpStrict = await req('POST', `/inspirations/${cardId}/light-preview`, {
+    timing: basePreviewTiming,
+    days: 7,
+    override: {
+      timeAnchor: 'sunrise',
+      anchorOffsetMin: 0,
+      cloudCoverPct: { min: 95, max: 96 },
+      visibilityKmMin: 40,
+      cameraBearing: 200,
+      lightBearingHint: 90,
+    },
+  });
+  check(
+    '改太阳事件/云量/能见度即时重判并回显新输入',
+    lpStrict.json?.input?.timeAnchor === 'sunrise' && lpStrict.json?.input?.weatherProfile?.visibilityKmMin === 40,
+  );
+  check('机位朝向+光位角派生期望方位角(200+90=290)', lpStrict.json?.derivations?.some((d) => d.key === 'expected_sun_azimuth' && d.result === 290));
+  check('试算序号单调递增（乱序防护）', Number(lpStrict.json?.evalId) > Number(lp1.json?.evalId));
+
+  const lpForged = await req('POST', `/inspirations/${cardId}/light-preview`, {
+    timing: {
+      ...basePreviewTiming,
+      azimuthRange: null,
+      weatherProfile: {},
+    },
+    override: {
+      timeAnchor: 'sunrise', anchorOffsetMin: 0, cloudCoverPct: { min: 0, max: 100 },
+      visibilityKmMin: 0, cameraBearing: 0, lightBearingHint: null,
+    },
+    lat: 1.23,
+    lng: 4.56,
+  });
+  check('预演请求伪造坐标被拒（400）', lpForged.status === 400, String(lpForged.status));
+
+
   // 8. 状态进入 ready
   detail = await req('GET', `/inspirations/${cardId}`);
   check('条件齐 + 机位齐 → ready', detail.json?.item?.status === 'ready', detail.json?.item?.status);

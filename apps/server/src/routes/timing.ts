@@ -5,12 +5,14 @@ import {
   distanceBand,
   distanceKm,
   formatLocal,
+  lightPreviewSchema,
   localDateKey,
   resolveAnchor,
   sunEvents,
   theoreticalOkForDay,
   theoreticalDaysInYear,
   timingSchema,
+  type LightPreviewRequest,
   type TimingDto,
 } from '@flil/shared';
 import { getDb, newId, nowIso, toJson } from '../db.js';
@@ -28,6 +30,7 @@ import {
   windowSummary,
 } from '../services/windowEngine.js';
 import { climateAt, climateStats, getForecast } from '../services/weather.js';
+import { evaluateLightPreview } from '../services/lightPreview.js';
 import { toInspirationDto } from '../services/serialization.js';
 
 export const timingRouter = Router();
@@ -130,6 +133,43 @@ timingRouter.post(
       },
       satisfiability: sat,
     });
+  }),
+);
+
+/** 预演试算序号：每库单调递增，只存计数器（不存条件/坐标/天气） */
+function nextPreviewEvalId(libraryId: string): number {
+  const db = getDb();
+  db.prepare(
+    `INSERT INTO preview_eval_seq (library_id, next_val) VALUES (?, 1)
+     ON CONFLICT (library_id) DO UPDATE SET next_val = next_val + 1`,
+  ).run(libraryId);
+  const row = db.prepare('SELECT next_val AS n FROM preview_eval_seq WHERE library_id = ?').get(libraryId) as {
+    n: number;
+  };
+  return row.n;
+}
+
+/**
+ * 光线预演台即时重判（不落库）。
+ * 改太阳事件 / 云量 / 能见度 / 机位朝向即请求一次；服务端：
+ *  - 只按库内 inspirationId 解析已授权机位，坐标**不接受**请求入参（防未授权坐标）；
+ *  - 只读天气缓存与窗口判定，不写窗口、不续缓存、不触碰任何分享链接；
+ *  - 回显输入快照 / 派生公式 / 天气来源，每条派生结论可溯源复算。
+ */
+timingRouter.post(
+  '/inspirations/:id/light-preview',
+  ah(async (req, res) => {
+    const ctx = ctxOf(req);
+    const row = requireInspiration(req.params.id, ctx.libraryId);
+    if (!row.spot_id) throw errors.badRequest('该卡片还没有机位，先把机位定下来');
+    const spot = loadSpotGeom(row.spot_id);
+    if (!spot) throw errors.badRequest('机位不存在');
+
+    // 坐标绝不从请求体取：即便调用方伪造 lat/lng 也会被 zod 整体拒绝
+    const request = lightPreviewSchema.parse(req.body) as LightPreviewRequest;
+    const evalId = nextPreviewEvalId(ctx.libraryId);
+    const result = await evaluateLightPreview(spot, request, evalId);
+    ok(res, result);
   }),
 );
 

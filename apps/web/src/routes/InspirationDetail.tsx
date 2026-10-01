@@ -37,6 +37,7 @@ import { useSession } from '../stores/session.js';
 import { AssetStrip } from '../components/AssetStrip.js';
 import { AnnotationEditor, type DraftAnnotation } from '../components/AnnotationEditor.js';
 import { TimingEditor } from '../components/TimingEditor.js';
+import { LightPreviewConsole } from '../components/LightPreviewConsole.js';
 import { WindowList } from '../components/WindowList.js';
 import { TagPicker } from '../components/TagPicker.js';
 
@@ -281,6 +282,21 @@ export default function InspirationDetail() {
               void detail.refetch();
               void windows.refetch();
             }}
+          />
+        </Card>
+      ) : null}
+
+      {item.spot ? (
+        <Card
+          size="small"
+          title="光线预演台（改太阳事件 / 云量 / 能见度 / 机位朝向即时重判，不落库）"
+        >
+          <LightPreviewConsole
+            inspirationId={item.id}
+            baseTiming={(item.timing as TimingDto) ?? null}
+            cameraBearing={item.spot.cameraBearing}
+            lightBearingHint={lightBearingHint}
+            tz={tz}
           />
         </Card>
       ) : null}

@@ -62,6 +62,97 @@ export interface ReproWindowDto {
   computedAt: string | null;
 }
 
+// ------------------------------------------------------- 光线预演台（不落库）
+
+/** 预演台允许临时覆盖的输入：只含四类旋钮（太阳事件 / 云量 / 能见度 / 机位朝向）+ 光位角 */
+export interface LightPreviewOverride {
+  timeAnchor: TimeAnchor;
+  anchorOffsetMin: number;
+  cloudCoverPct: { min: number; max: number };
+  visibilityKmMin: number;
+  cameraBearing: number;
+  /** 最近一次光位箭头（可选）；给定时期望太阳方位角由机位朝向派生 */
+  lightBearingHint: number | null;
+}
+
+/** 预演台请求：timing 为待试算条件（不写库），override 是四个旋钮的临时取值 */
+export interface LightPreviewRequest {
+  timing: TimingDto;
+  days?: number;
+  override: LightPreviewOverride;
+}
+
+/** 预演真正用于计算的输入快照（派生结论的溯源依据，原样回显） */
+export interface LightPreviewInputSnapshot {
+  timeAnchor: TimeAnchor;
+  anchorOffsetMin: number;
+  weatherProfile: WeatherProfile;
+  cameraBearing: number;
+  lightBearingHint: number | null;
+  azimuthRange: number[] | null;
+  azimuthTolerance: number;
+  /** 期望方位角是手写还是由"机位朝向 + 光位角"派生 */
+  azimuthSource: 'manual' | 'camera_bearing_plus_light';
+}
+
+/** 一条派生关系（结论如何从输入算出来） */
+export interface LightPreviewDerivation {
+  key: string;
+  formula: string;
+  inputs: Record<string, number | string | null>;
+  result: number | string | null;
+}
+
+/** 预演用到的天气数据来源（不含任何坐标，避免经此泄露机位） */
+export interface LightPreviewForecastMeta {
+  provider: string;
+  cached: boolean;
+  cacheHit: boolean;
+  fetchedAt: string | null;
+  ageMin: number | null;
+  ttlMin: number;
+  degraded: boolean;
+  hours: number;
+}
+
+export interface LightPreviewDay {
+  date: string;
+  verdict: WindowVerdict;
+  startAt: string | null;
+  endAt: string | null;
+  anchorAt: string | null;
+  sunElevation: number | null;
+  sunAzimuth: number | null;
+  reasons: WindowReasonDto[];
+  /** 该日窗口天气实测摘要（云量/能见度等实际值，供与目标值人工复算） */
+  weather: LightPreviewWeather | null;
+}
+
+export interface LightPreviewWeather {
+  degraded: boolean;
+  provider: string;
+  avgCloudCoverPct: number | null;
+  maxPrecipProbPct: number | null;
+  minVisibilityKm: number | null;
+  maxWindSpeedMs: number | null;
+  avgTempC: number | null;
+}
+
+export interface LightPreviewResponse {
+  /** 单调序号：与请求入参一一对应，前端据此丢弃乱序到达的旧响应 */
+  evalId: number;
+  evaluatedAt: string;
+  /** 本次计算实际使用的输入（回显，可溯源） */
+  input: LightPreviewInputSnapshot;
+  /** 派生过程：期望方位角等"算出来的量" */
+  derivations: LightPreviewDerivation[];
+  days: LightPreviewDay[];
+  counts: { good: number; marginal: number; bad: number };
+  forecast: LightPreviewForecastMeta;
+  /** 本次只试算、不落库，且不触碰分享/缓存的声明 */
+  persisted: false;
+}
+
 export interface TagDto {
   id: string;
   domain: TagDomain;

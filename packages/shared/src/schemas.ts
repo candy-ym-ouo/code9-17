@@ -209,4 +209,26 @@ export const offlineOpSchema = z.object({
   payload: z.record(z.unknown()),
 });
 
+/**
+ * 光线预演台请求：四个旋钮（太阳事件 / 云量 / 能见度 / 机位朝向）+ 光位角，
+ * 外加一份不落库的待试算 timing。坐标**不允许**出现在这里——机位一律由
+ * 服务端按 inspirationId 从库内解析，杜绝用预演接口给未授权坐标算天象。
+ */
+export const lightPreviewOverrideSchema = z.object({
+  timeAnchor: zEnum(TimeAnchor),
+  anchorOffsetMin: z.number().int().min(-1440).max(1440),
+  cloudCoverPct: z.object({ min: z.number().min(0).max(100), max: z.number().min(0).max(100) }),
+  visibilityKmMin: z.number().min(0).max(100),
+  cameraBearing: z.number().min(0).max(360),
+  lightBearingHint: z.number().min(-360).max(720).nullable(),
+});
+
+export const lightPreviewSchema = z
+  .object({
+    timing: timingSchema,
+    days: z.number().int().min(1).max(16).optional(),
+    override: lightPreviewOverrideSchema,
+  })
+  .strict();
+
 export { AssetRole };

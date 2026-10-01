@@ -1,8 +1,11 @@
+import { useRef } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import type {
   AlbumDto,
   AlbumGapDto,
   InspirationDto,
+  LightPreviewRequest,
+  LightPreviewResponse,
   PlanDto,
   ReminderDto,
   ReproWindowDto,
@@ -163,6 +166,37 @@ export function usePreviewTiming() {
         satisfiability: { total: number; satisfied: number; ratio: number; advice: string | null };
       }>(`/inspirations/${id}/timing/preview`, timing),
   });
+}
+
+/**
+ * 光线预演台即时重判：入参（四个旋钮）进 queryKey，旋钮一变即自动重新请求。
+ * - 不落库：staleTime 0、gcTime 短，切走即弃；
+ * - 乱序防护：服务端按库返回单调 evalId，前端只展示 evalId 不小于已展示值的响应；
+ * - 请求携带完整入参，切回旧旋钮时若拿到更新的 evalId 也照常展示。
+ */
+export function useLightPreview(
+  id: string | undefined,
+  request: LightPreviewRequest | null,
+  enabled: boolean,
+) {
+  const maxEvalRef = useRef(-1);
+  const query = useQuery({
+    queryKey: ['lightPreview', id, request],
+    queryFn: () => post<LightPreviewResponse>(`/inspirations/${id}/light-preview`, request),
+    enabled: enabled && Boolean(id) && request !== null,
+    staleTime: 0,
+    gcTime: 0,
+    refetchOnWindowFocus: false,
+    structuralSharing: false,
+    placeholderData: (prev: LightPreviewResponse | undefined) => prev,
+  });
+
+  const data = query.data ?? null;
+  if (data && data.evalId > maxEvalRef.current) maxEvalRef.current = data.evalId;
+  // 乱序/回退：只展示 evalId 不小于已展示最大值的结果，旧响应一律不呈现
+  const shown = data && data.evalId >= maxEvalRef.current ? data : null;
+
+  return { ...query, data: shown };
 }
 
 export function useRecomputeWindows() {

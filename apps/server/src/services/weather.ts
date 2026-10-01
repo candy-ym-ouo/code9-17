@@ -109,7 +109,7 @@ function cacheKey(lat: number, lng: number, days: number): string {
   return `${config.weatherProvider}:${lat.toFixed(2)}:${lng.toFixed(2)}:${days}`;
 }
 
-function readCache(key: string): HourlyForecast[] | null {
+function readCacheEntry(key: string): { forecast: HourlyForecast[]; fetchedAt: string } | null {
   try {
     const db = getDb();
     const row = db.prepare('SELECT payload, fetched_at FROM weather_cache WHERE cache_key = ?').get(key) as
@@ -118,10 +118,14 @@ function readCache(key: string): HourlyForecast[] | null {
     if (!row) return null;
     const ageMin = (Date.now() - new Date(row.fetched_at).getTime()) / 60000;
     if (ageMin > config.weatherCacheTtlMin) return null;
-    return parseJson<HourlyForecast[]>(row.payload, []);
+    return { forecast: parseJson<HourlyForecast[]>(row.payload, []), fetchedAt: row.fetched_at };
   } catch {
     return null;
   }
+}
+
+function readCache(key: string): HourlyForecast[] | null {
+  return readCacheEntry(key)?.forecast ?? null;
 }
 
 function writeCache(key: string, forecast: HourlyForecast[]): void {
@@ -138,21 +142,45 @@ function writeCache(key: string, forecast: HourlyForecast[]): void {
 }
 
 export async function getForecast(lat: number, lng: number, days: number): Promise<HourlyForecast[]> {
-  if (config.weatherProvider === 'off') return [];
+  const { forecast } = await getForecastMeta(lat, lng, days);
+  return forecast;
+}
+
+export interface ForecastMeta {
+  forecast: HourlyForecast[];
+  /** 本次是否直接命中未过期缓存（预演溯源用） */
+  cacheHit: boolean;
+  /** 实际使用数据的抓取时刻：命中缓存为缓存写入时刻，实时抓取为当前，降级为 null */
+  fetchedAt: string | null;
+}
+
+/**
+ * 取预报并附带缓存来源元数据。元数据**刻意不含坐标**，避免经预演接口反推机位。
+ * 未命中时照常抓取并回填缓存（与正式窗口计算同一份数据）；
+ * 命中时直接返回缓存、不延长其 fetched_at/TTL。
+ */
+export async function getForecastMeta(lat: number, lng: number, days: number): Promise<ForecastMeta> {
+  if (config.weatherProvider === 'off') {
+    return { forecast: [], cacheHit: false, fetchedAt: null };
+  }
   const key = cacheKey(lat, lng, days);
-  const cached = readCache(key);
-  if (cached) return cached;
+  const cached = readCacheEntry(key);
+  if (cached) return { forecast: cached.forecast, cacheHit: true, fetchedAt: cached.fetchedAt };
 
   try {
     const forecast =
       config.weatherProvider === 'fixture'
         ? fetchFixture(lat, lng, days)
         : await fetchOpenMeteo(lat, lng, days);
-    if (forecast.length) writeCache(key, forecast);
-    return forecast;
+    if (forecast.length) {
+      const fetchedAt = nowIso();
+      writeCache(key, forecast);
+      return { forecast, cacheHit: false, fetchedAt };
+    }
+    return { forecast, cacheHit: false, fetchedAt: null };
   } catch (err) {
     logger.warn('天气源不可用，进入降级模式', { error: String(err), provider: config.weatherProvider });
-    return [];
+    return { forecast: [], cacheHit: false, fetchedAt: null };
   }
 }
 
